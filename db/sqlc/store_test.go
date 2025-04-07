@@ -22,7 +22,7 @@ func TestTransferTx(t *testing.T) {
 	errs := make(chan error)
 	results := make(chan TransferTxResult)
 
-	for range n {
+	for _ = range make([]int, n) {
 		// for i := range n {
 		// txName := fmt.Sprintf("tx-%d", i+1)
 
@@ -44,7 +44,7 @@ func TestTransferTx(t *testing.T) {
 	// check results
 	existed := make(map[int]bool) // 模拟set，也可以用map[string]struct{}，existed[k] = struct{}{}，_, exists := existed[k]
 
-	for range n {
+	for _ = range make([]int, n) {
 		err := <-errs
 		require.NoError(t, err)
 
@@ -132,7 +132,7 @@ func TestTransferTxDeadlock(t *testing.T) {
 	errs := make(chan error)
 	// results := make(chan TransferTxResult)
 
-	for i := range n {
+	for i := range make([]int, n) {
 		// for i := range n {
 		// txName := fmt.Sprintf("tx-%d", i+1)
 
@@ -161,7 +161,7 @@ func TestTransferTxDeadlock(t *testing.T) {
 	// check results
 	// existed := make(map[int]bool) // 模拟set，也可以用map[string]struct{}，existed[k] = struct{}{}，_, exists := existed[k]
 
-	for range n {
+	for _ = range make([]int, n) {
 		err := <-errs
 		require.NoError(t, err)
 
