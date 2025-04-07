@@ -6,18 +6,18 @@ import (
 
 	"github.com/tywangq/banking-system/api"
 	db "github.com/tywangq/banking-system/db/sqlc"
+	"github.com/tywangq/banking-system/util"
 
 	_ "github.com/lib/pq" // 手动导入；且需要_
 )
 
-const (
-	dbDriver      = "postgres"
-	dbSource      = "postgresql://root:psql@localhost:5432/bank?sslmode=disable"
-	serverAddress = "0.0.0.0:8080"
-)
-
 func main() {
-	conn, err := sql.Open(dbDriver, dbSource)
+	config, err := util.LoadConfig(".")
+	if err != nil {
+		log.Fatal("cannot load config:", err)
+	}
+
+	conn, err := sql.Open(config.DbDriver, config.DbSource)
 	if err != nil {
 		log.Fatal("cannot connect to db:", err)
 	}
@@ -25,7 +25,7 @@ func main() {
 	store := db.NewStore(conn)
 	server := api.NewServer(store)
 
-	err = server.Start(serverAddress)
+	err = server.Start(config.ServerAddress)
 	if err != nil {
 		log.Fatal("cannot start server:", err)
 	}
