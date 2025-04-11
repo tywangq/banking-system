@@ -83,8 +83,8 @@ func TestGetAccountAPI(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testcases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
 
 			//----------------------------------------
 			// Define behaviors
@@ -98,7 +98,7 @@ func TestGetAccountAPI(t *testing.T) {
 			store := mockdb.NewMockStore(controller)
 
 			// build the studs
-			tc.buildStuds(store)
+			testcase.buildStuds(store)
 
 			//----------------------------------------
 			// Send request
@@ -108,7 +108,7 @@ func TestGetAccountAPI(t *testing.T) {
 			server := NewServer(store)
 
 			// Create a request
-			url := fmt.Sprintf("/accounts/%d", tc.accountID)
+			url := fmt.Sprintf("/accounts/%d", testcase.accountID)
 			request, err := http.NewRequest(http.MethodGet, url, nil)
 			require.NoError(t, err)
 
@@ -121,7 +121,7 @@ func TestGetAccountAPI(t *testing.T) {
 			//----------------------------------------
 			// Check response
 			//----------------------------------------
-			tc.checkResponse(t, recorder)
+			testcase.checkResponse(t, recorder)
 		})
 	}
 }
