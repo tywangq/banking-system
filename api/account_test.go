@@ -105,7 +105,7 @@ func TestGetAccountAPI(t *testing.T) {
 			//----------------------------------------
 
 			// Create a server with the store
-			server := NewServer(store)
+			server := newTestServer(t, store)
 
 			// Create a request
 			url := fmt.Sprintf("/accounts/%d", testcase.accountID)
