@@ -2,27 +2,29 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
 	db "github.com/tywangq/banking-system/db/sqlc"
+	"github.com/tywangq/banking-system/token"
 )
 
-type CreateAccountRequest struct {
-	Owner    string `json:"owner" binding:"required"`
+type createAccountRequest struct {
 	Currency string `json:"currency" binding:"required,currency"`
 }
 
 func (server *Server) createAccount(ctx *gin.Context) {
-	var req CreateAccountRequest
+	var req createAccountRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil { // JSON
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 	arg := db.CreateAccountParams{
-		Owner:    req.Owner,
+		Owner:    authPayload.Username,
 		Currency: req.Currency,
 		Balance:  0,
 	}
@@ -43,12 +45,12 @@ func (server *Server) createAccount(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, account)
 }
 
-type GetAccountRequest struct {
+type getAccountRequest struct {
 	ID int64 `uri:"id" binding:"required,min=1"`
 }
 
 func (server *Server) getAccount(ctx *gin.Context) {
-	var req GetAccountRequest
+	var req getAccountRequest
 	if err := ctx.ShouldBindUri(&req); err != nil { // uri
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
@@ -64,22 +66,31 @@ func (server *Server) getAccount(ctx *gin.Context) {
 		return
 	}
 
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	if account.Owner != authPayload.Username {
+		err := errors.New("account doesn't belong to the authenticated user")
+		ctx.JSON(http.StatusUnauthorized, errorResponse(err))
+		return
+	}
+
 	ctx.JSON(http.StatusOK, account)
 }
 
-type ListAccountRequest struct {
+type listAccountRequest struct {
 	PageId   int32 `form:"page_id" binding:"required,min=1"`
 	PageSize int32 `form:"page_size" binding:"required,min=5,max=10"`
 }
 
 func (server *Server) listAccounts(ctx *gin.Context) {
-	var req ListAccountRequest
+	var req listAccountRequest
 	if err := ctx.ShouldBindQuery(&req); err != nil { // query
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 	arg := db.ListAccountsParams{
+		Owner:  authPayload.Username,
 		Limit:  req.PageSize,
 		Offset: (req.PageId - 1) * req.PageSize,
 	}
