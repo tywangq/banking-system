@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16.8-alpine3.20
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=psql
+      - POSTGRES_DB=bank
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_SOURCE=postgresql://root:psql@postgres:5432/bank?sslmode=disable
+    depends_on:
+      - postgres
+    entrypoint: ["./wait-for.sh", "postgres:5432", "--", "/app/start.sh"]
+    command: ["/app/main"]
