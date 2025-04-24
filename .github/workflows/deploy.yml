@@ -46,7 +46,7 @@ jobs:
           
       - name: Verify cluster access
         run: |
-          kubectl version --short
+          kubectl version
           kubectl get nodes
 
       - name: Deploy image to Amazon EKS
