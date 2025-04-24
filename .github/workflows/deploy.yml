@@ -43,11 +43,10 @@ jobs:
       
       - name: Update kube config
         run: aws eks update-kubeconfig --name bank --region us-east-1
-          
-      - name: Verify cluster access
-        run: |
-          kubectl version
-          kubectl get nodes
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
 
       - name: Deploy image to Amazon EKS
         run: |
