@@ -43,6 +43,11 @@ jobs:
       
       - name: Update kube config
         run: aws eks update-kubeconfig --name bank --region us-east-1
+          
+      - name: Verify cluster access
+        run: |
+          kubectl version --short
+          kubectl get nodes
 
       - name: Deploy image to Amazon EKS
         run: |
