@@ -15,9 +15,13 @@ INSERT INTO users (
     hashed_password,
     full_name,
     email
-) VALUES (
-    $1, $2, $3, $4
-)
+) 
+VALUES (
+    $1, 
+    $2, 
+    $3, 
+    $4
+) 
 RETURNING username, hashed_password, full_name, email, password_changed_at, created_at
 `
 
@@ -48,7 +52,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const getUser = `-- name: GetUser :one
-SELECT username, hashed_password, full_name, email, password_changed_at, created_at
+SELECT username, hashed_password, full_name, email, password_changed_at, created_at 
 FROM users
 WHERE username = $1
 LIMIT 1

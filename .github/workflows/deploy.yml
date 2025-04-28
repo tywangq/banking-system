@@ -1,8 +1,9 @@
 name: Deploy to production
 
 on:
-  push:
-    branches: ["main"]
+  # push:
+  #   branches: ["main"]
+  workflow_dispatch: # manual trigger
 
 jobs:
   deploy:
@@ -40,7 +41,7 @@ jobs:
         run: |
           docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG -t $REGISTRY/$REPOSITORY:latest .
           docker push -a $REGISTRY/$REPOSITORY
-      
+
       - name: Update kube config
         run: aws eks update-kubeconfig --name bank --region us-east-1
         env:

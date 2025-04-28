@@ -16,7 +16,9 @@ INSERT INTO transfers (
     amount
 ) 
 VALUES (
-    $1, $2, $3
+    $1, 
+    $2, 
+    $3
 ) 
 RETURNING id, from_account_id, to_account_id, amount, created_at
 `
@@ -67,7 +69,8 @@ WHERE
     from_account_id = $1 
     OR to_account_id = $2
 ORDER BY id
-LIMIT $3 OFFSET $4
+LIMIT $3 
+OFFSET $4
 `
 
 type ListTransfersParams struct {

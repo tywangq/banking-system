@@ -4,13 +4,17 @@ INSERT INTO users (
     hashed_password,
     full_name,
     email
-) VALUES (
-    $1, $2, $3, $4
-)
+) 
+VALUES (
+    $1, 
+    $2, 
+    $3, 
+    $4
+) 
 RETURNING *;
 
 -- name: GetUser :one
-SELECT *
+SELECT * 
 FROM users
 WHERE username = $1
 LIMIT 1;
