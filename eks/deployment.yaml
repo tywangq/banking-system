@@ -20,3 +20,9 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          # The image no longer carries app.env, so every config key comes from
+          # here. The deploy workflow syncs this Secret from AWS Secrets Manager
+          # before applying the deployment.
+          envFrom:
+            - secretRef:
+                name: bank-api-config
