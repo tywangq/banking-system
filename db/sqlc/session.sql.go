@@ -12,6 +12,47 @@ import (
 	"github.com/google/uuid"
 )
 
+const blockSession = `-- name: BlockSession :one
+UPDATE sessions
+SET is_blocked = true
+WHERE id = $1
+RETURNING id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at, created_at
+`
+
+// Revokes one session. Blocking rather than deleting keeps the audit trail: the
+// user agent and client IP of a session that was signed out stay inspectable.
+func (q *Queries) BlockSession(ctx context.Context, id uuid.UUID) (Session, error) {
+	row := q.db.QueryRowContext(ctx, blockSession, id)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.RefreshToken,
+		&i.UserAgent,
+		&i.ClientIp,
+		&i.IsBlocked,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const blockUserSessions = `-- name: BlockUserSessions :execrows
+UPDATE sessions
+SET is_blocked = true
+WHERE username = $1 AND is_blocked = false
+`
+
+// Revokes every session a user holds, for "sign out everywhere". Returns the number
+// of rows touched so the caller can report how many were actually open.
+func (q *Queries) BlockUserSessions(ctx context.Context, username string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, blockUserSessions, username)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (
   id,

@@ -26,6 +26,14 @@ type Entry struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type IdempotencyKey struct {
+	Owner        string    `json:"owner"`
+	Key          string    `json:"key"`
+	RequestHash  string    `json:"request_hash"`
+	ResponseBody string    `json:"response_body"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 type Session struct {
 	ID           uuid.UUID `json:"id"`
 	Username     string    `json:"username"`

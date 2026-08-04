@@ -12,6 +12,7 @@ import (
 	"github.com/tywangq/banking-system/api"
 	db "github.com/tywangq/banking-system/db/sqlc"
 	"github.com/tywangq/banking-system/gapi"
+	"github.com/tywangq/banking-system/health"
 	"github.com/tywangq/banking-system/pb"
 	"github.com/tywangq/banking-system/util"
 	"google.golang.org/grpc"
@@ -117,6 +118,11 @@ func runGatewayServer(config util.Config, store db.Store) {
 	}
 
 	mux := http.NewServeMux()
+	// The kubelet talks to this server, not to the Gin one, so the probes have to be
+	// registered here or they answer 404 and the liveness probe kills the pod.
+	mux.HandleFunc("/health/live", health.Live)
+	mux.HandleFunc("/health/ready", health.Ready(store))
+
 	mux.Handle("/", grpcMux)
 
 	// http://localhost:8080/swagger/index.html -> ./doc/swagger/index.html

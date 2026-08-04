@@ -20,3 +20,38 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          # The image no longer carries app.env, so every config key comes from
+          # here. The deploy workflow syncs this Secret from AWS Secrets Manager
+          # before applying the deployment.
+          envFrom:
+            - secretRef:
+                name: bank-api-config
+          # Liveness must not touch Postgres. A database outage would otherwise fail
+          # the probe on every replica at once and restart them all, turning an
+          # outage into a crash loop for no benefit.
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3
+          # Readiness does check Postgres. Failing it only pulls the pod out of the
+          # Service, which is the correct response to an unusable dependency: stop
+          # sending traffic, keep the process alive, let it rejoin when it recovers.
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          # Without requests the scheduler has nothing to place the pod on, and
+          # without limits one replica can starve everything sharing its node.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

@@ -8,7 +8,10 @@ RUN go build -o main main.go
 FROM alpine:3.21
 WORKDIR /app
 COPY --from=builder /app/main .
-COPY app.env .
+# No app.env here on purpose: baking config into an image layer means the secrets
+# ship with the image and sit in the registry for anyone with pull access. The
+# config comes from the environment instead -- a Kubernetes Secret in production,
+# app.env locally -- which util.LoadConfig falls back to when no file is present.
 COPY start.sh .
 COPY wait-for.sh .
 COPY db/migration ./db/migration
