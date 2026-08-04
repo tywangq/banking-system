@@ -32,7 +32,7 @@ A transfer touches two account rows. Two transfers running at once can interleav
 and lose an update, and the naive fix — lock both rows — deadlocks the moment two
 transfers move money in opposite directions between the same pair.
 
-Two things prevent that:
+Three things prevent that:
 
 1. **`SELECT ... FOR NO KEY UPDATE`** when reading the balance. `FOR UPDATE` would
    also block the foreign-key checks that `INSERT INTO transfers` needs; `FOR NO KEY
@@ -40,13 +40,25 @@ Two things prevent that:
 2. **Consistent lock ordering.** `TransferTx` always updates the lower account ID
    first (`db/sqlc/store.go`), so two opposing transfers acquire locks in the same
    order and one waits instead of both deadlocking.
+3. **`CHECK (balance >= 0)` on `accounts`.** Checking the balance in Go before
+   calling `TransferTx` would be racy: two concurrent transfers can both read a
+   sufficient balance and both proceed. Only the database sees the serialized
+   result, so the guarantee belongs there. The handler maps that constraint
+   violation to a `400` — a client asking to overdraw is a client error, not a
+   server fault.
 
-Neither is left to reasoning — both are pinned by tests:
+None of it is left to reasoning — all three are pinned by tests:
 
 - `TestTransferTx` runs N concurrent transfers and checks the final balances and
   that every transfer record exists
 - `TestTransferTxDeadlock` runs transfers in both directions between the same two
   accounts and asserts the run completes
+- `TestTransferTxRejectsOverdraft` asserts one oversized transfer is refused and
+  that the rollback leaves both balances untouched
+- `TestTransferTxConcurrentOverdraftLeavesBalanceNonNegative` fires 20 concurrent
+  transfers of 10 at a balance of 100. Each is individually affordable, so an
+  application-level check would let them all through — exactly 10 succeed, the
+  balance lands on 0, and it never goes negative
 
 ## Auth
 
@@ -114,9 +126,9 @@ make evans         # interactive gRPC client
 ```
 
 Config is read by `viper` from `app.env`, which is **not** in the repo —
-`app.env.example` documents the keys, and the deploy workflow materializes the real
-values from **AWS Secrets Manager** at build time rather than storing them anywhere
-in git.
+`app.env.example` documents the keys. When no file is present `LoadConfig` falls back
+to environment variables, which is how CI and the production pods run; see
+Deployment below.
 
 ## Tests
 
@@ -127,9 +139,16 @@ a database. The `db/sqlc` tests are integration tests and do need a live Postgre
 | --- | --- | --- |
 | `val` | 100% | username / name / password / email rules |
 | `gapi` | 92% | the three gRPC handlers, auth, logging interceptors |
+| `db/sqlc` | 78% | queries and `TransferTx`, including the concurrency tests above |
 | `token` | 78% | Paseto and JWT makers, expiry, the `alg: none` attack |
-| `db/sqlc` | 76% | queries and `TransferTx`, including the concurrency tests above |
-| `api` | 47% | REST handlers |
+| `api` | 66% | REST handlers, including every `POST /transfers` rejection path |
+| `util` | 61% | config loading, password hashing |
+
+`POST /transfers` is covered for every way it can refuse: an account the caller
+does not own, either side's currency mismatching, the same account on both sides, a
+non-positive amount, a missing account, and an overdraft. A `check_violation` from
+some *other* constraint is asserted to stay a `500`, so the overdraft mapping cannot
+silently swallow an unrelated database error.
 
 The `gapi` suite is where the security-relevant assertions live: a valid token for one
 user is rejected when it tries to edit another (`PermissionDenied`, not a silent
@@ -157,9 +176,12 @@ go test ./... -race -cover    # same suite under the race detector
   `ingress.yaml`, `issuer.yaml`, `aws-auth.yaml`
 - **TLS** — terminated at the ingress, with certificates issued automatically by the
   cluster issuer rather than mounted by hand
-
-Building locally needs an `app.env` present (`cp app.env.example app.env`) — the
-deploy workflow writes one from Secrets Manager before it builds.
+- **Configuration is not in the image.** The Dockerfile does not copy `app.env`, so
+  the built image carries no secrets and nothing sensitive sits in the registry.
+  In production the deploy workflow syncs the values from **AWS Secrets Manager**
+  into a Kubernetes Secret, which the deployment reads via `envFrom`. Locally the
+  same binary reads `app.env`. `docker build` works from a clean clone with no
+  config file present.
 
 ## Scope
 
@@ -167,6 +189,11 @@ Deliberately not here: rate limiting, caching, and horizontal sharding. This is 
 service with one database, and the goal was correctness under concurrency and a clean
 dual-protocol contract — not throughput. Adding a cache in front of balances would
 have to answer invalidation on every transfer, which is a different project.
+
+A known gap rather than a decision: `POST /transfers` has no idempotency key, so a
+client that retries a timed-out request can move the money twice. Doing it properly
+means a request-keyed table with a unique index, returning the first result on a
+replay instead of executing again.
 
 ## Stack
 
