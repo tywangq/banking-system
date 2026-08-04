@@ -2,9 +2,11 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -233,4 +235,88 @@ func TestTransferTxDeadlock(t *testing.T) {
 
 	require.Equal(t, account1.Balance, updatedAccount1.Balance)
 	require.Equal(t, account2.Balance, updatedAccount2.Balance)
+}
+
+// TestTransferTxRejectsOverdraft proves the constraint itself, not the handler's
+// error mapping: a single transfer larger than the balance must be refused by
+// Postgres, and the rollback must leave both balances untouched.
+func TestTransferTxRejectsOverdraft(t *testing.T) {
+	store := NewStore(testDB)
+
+	account1 := createRandomAccount(t)
+	account2 := createRandomAccount(t)
+
+	_, err := store.TransferTx(context.Background(), TransferTxParams{
+		FromAccountID: account1.ID,
+		ToAccountID:   account2.ID,
+		Amount:        account1.Balance + 1,
+	})
+	require.Error(t, err)
+
+	var pqErr *pq.Error
+	require.True(t, errors.As(err, &pqErr), "expected a pq error, got %T: %v", err, err)
+	require.Equal(t, "accounts_balance_non_negative", pqErr.Constraint)
+
+	// The whole transaction has to roll back -- the transfer row and the ledger
+	// entries must not survive a rejected transfer either.
+	after1, err := testQueries.GetAccount(context.Background(), account1.ID)
+	require.NoError(t, err)
+	require.Equal(t, account1.Balance, after1.Balance)
+
+	after2, err := testQueries.GetAccount(context.Background(), account2.ID)
+	require.NoError(t, err)
+	require.Equal(t, account2.Balance, after2.Balance)
+}
+
+// TestTransferTxConcurrentOverdraftLeavesBalanceNonNegative is the case an
+// application-level balance check cannot handle: every transfer is individually
+// affordable, but together they exceed the balance. Some must fail, and the
+// balance must never end up below zero.
+func TestTransferTxConcurrentOverdraftLeavesBalanceNonNegative(t *testing.T) {
+	store := NewStore(testDB)
+
+	account1 := createRandomAccount(t)
+	account2 := createRandomAccount(t)
+
+	// Fund a known balance so the arithmetic is exact.
+	funded, err := testQueries.AddAccountBalance(context.Background(), AddAccountBalanceParams{
+		ID:     account1.ID,
+		Amount: 100 - account1.Balance,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(100), funded.Balance)
+
+	// 20 concurrent transfers of 10 against a balance of 100: at most 10 can win.
+	n := 20
+	amount := int64(10)
+	errs := make(chan error, n)
+
+	for range make([]int, n) {
+		go func() {
+			_, err := store.TransferTx(context.Background(), TransferTxParams{
+				FromAccountID: account1.ID,
+				ToAccountID:   account2.ID,
+				Amount:        amount,
+			})
+			errs <- err
+		}()
+	}
+
+	succeeded := 0
+	for range make([]int, n) {
+		if err := <-errs; err == nil {
+			succeeded++
+		}
+	}
+
+	require.Equal(t, 10, succeeded, "exactly the affordable transfers should win")
+
+	after1, err := testQueries.GetAccount(context.Background(), account1.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), after1.Balance)
+	require.GreaterOrEqual(t, after1.Balance, int64(0))
+
+	after2, err := testQueries.GetAccount(context.Background(), account2.ID)
+	require.NoError(t, err)
+	require.Equal(t, account2.Balance+int64(succeeded)*amount, after2.Balance)
 }

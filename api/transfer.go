@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	db "github.com/tywangq/banking-system/db/sqlc"
 	"github.com/tywangq/banking-system/token"
 )
@@ -55,6 +56,16 @@ func (server *Server) createTransfer(ctx *gin.Context) {
 
 	result, err := server.store.TransferTx(ctx, arg)
 	if err != nil {
+		// The accounts_balance_non_negative constraint is what actually prevents an
+		// overdraft. Checking the balance here before calling TransferTx would be
+		// racy: two concurrent transfers can both read a sufficient balance and both
+		// proceed. Postgres serializes them and rejects the one that would go
+		// negative, which is a client error rather than a server error.
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Constraint == "accounts_balance_non_negative" {
+			err = fmt.Errorf("insufficient balance in account %d", req.FromAccountID)
+			ctx.JSON(http.StatusBadRequest, errorResponse(err))
+			return
+		}
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
