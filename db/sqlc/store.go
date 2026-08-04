@@ -3,12 +3,14 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 )
 
 type Store interface {
 	Querier
 	TransferTx(ctx context.Context, arg TransferTxParams) (TransferTxResult, error)
+	IdempotentTransferTx(ctx context.Context, arg IdempotentTransferTxParams) (TransferTxResult, error)
 }
 
 type SQLStore struct {
@@ -62,88 +64,104 @@ func (store *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (Tr
 
 	err := store.execTx(ctx, func(q *Queries) error {
 		var err error
+		result, err = transferTx(ctx, q, arg)
+		return err
+	})
 
-		// txName := ctx.Value(txKey)
+	return result, err
+}
 
-		// fmt.Println(txName, "create transfer")
-		result.Transfer, err = q.CreateTransfer(ctx, CreateTransferParams(arg))
+// transferTx holds the actual transfer work so that TransferTx and
+// IdempotentTransferTx can run it inside their own transaction. It takes a *Queries
+// rather than opening one, which is the whole point: the caller decides what else
+// belongs in the same transaction.
+func transferTx(ctx context.Context, q *Queries, arg TransferTxParams) (TransferTxResult, error) {
+	var result TransferTxResult
+	var err error
+
+	result.Transfer, err = q.CreateTransfer(ctx, CreateTransferParams(arg))
+	if err != nil {
+		return result, err
+	}
+
+	result.FromEntry, err = q.CreateEntry(ctx, CreateEntryParams{
+		AccountID: arg.FromAccountID,
+		Amount:    -arg.Amount,
+	})
+	if err != nil {
+		return result, err
+	}
+
+	result.ToEntry, err = q.CreateEntry(ctx, CreateEntryParams{
+		AccountID: arg.ToAccountID,
+		Amount:    arg.Amount,
+	})
+	if err != nil {
+		return result, err
+	}
+
+	// Always touch the lower account ID first. Two transfers moving money in
+	// opposite directions between the same pair then take their locks in the same
+	// order, so one waits instead of both deadlocking. TestTransferTxDeadlock covers
+	// it. (Earlier attempts kept in git history: GetAccountForUpdate + UpdateAccount,
+	// and AddAccountBalance without ordering -- the latter is what deadlocks.)
+	if arg.FromAccountID < arg.ToAccountID {
+		result.FromAccount, result.ToAccount, err = addMoney(ctx, q, arg.FromAccountID, -arg.Amount, arg.ToAccountID, arg.Amount)
+	} else {
+		result.ToAccount, result.FromAccount, err = addMoney(ctx, q, arg.ToAccountID, arg.Amount, arg.FromAccountID, -arg.Amount)
+	}
+
+	return result, err
+}
+
+type IdempotentTransferTxParams struct {
+	TransferTxParams
+	Owner       string
+	Key         string
+	RequestHash string
+}
+
+// IdempotentTransferTx claims the idempotency key and performs the transfer in one
+// transaction, claim first.
+//
+// The ordering is the entire design. Checking "has this key been used?" and then
+// transferring would be the same race as checking a balance before debiting it: two
+// concurrent retries both see no key and both move the money. Inserting the claim
+// first hands the mutual exclusion to the primary key on (owner, key) -- the second
+// request blocks on the index until the first commits, then fails to insert, and the
+// caller turns that failure into a replay of the stored response.
+//
+// A failed transfer rolls the claim back with it, so the key stays available. That is
+// deliberate: the key exists to stop a *successful* transfer from happening twice, not
+// to make a failure permanent.
+func (store *SQLStore) IdempotentTransferTx(ctx context.Context, arg IdempotentTransferTxParams) (TransferTxResult, error) {
+	var result TransferTxResult
+
+	err := store.execTx(ctx, func(q *Queries) error {
+		if _, err := q.CreateIdempotencyKey(ctx, CreateIdempotencyKeyParams{
+			Owner:       arg.Owner,
+			Key:         arg.Key,
+			RequestHash: arg.RequestHash,
+		}); err != nil {
+			return err
+		}
+
+		var err error
+		result, err = transferTx(ctx, q, arg.TransferTxParams)
 		if err != nil {
 			return err
 		}
 
-		// fmt.Println(txName, "create entry 1")
-		result.FromEntry, err = q.CreateEntry(ctx, CreateEntryParams{
-			AccountID: arg.FromAccountID,
-			Amount:    -arg.Amount,
+		body, err := json.Marshal(result)
+		if err != nil {
+			return err
+		}
+
+		_, err = q.CompleteIdempotencyKey(ctx, CompleteIdempotencyKeyParams{
+			Owner:        arg.Owner,
+			Key:          arg.Key,
+			ResponseBody: string(body),
 		})
-		if err != nil {
-			return err
-		}
-
-		// fmt.Println(txName, "create entry 2")
-		result.ToEntry, err = q.CreateEntry(ctx, CreateEntryParams{
-			AccountID: arg.ToAccountID,
-			Amount:    arg.Amount,
-		})
-		if err != nil {
-			return err
-		}
-
-		// approach 1: get for update + update balance
-		// // fmt.Println(txName, "get account 1")
-		// account1, err := q.GetAccountForUpdate(ctx, arg.FromAccountID)
-		// if err != nil {
-		// 	return err
-		// }
-
-		// // fmt.Println(txName, "update account 1")
-		// result.FromAccount, err = q.UpdateAccount(ctx, UpdateAccountParams{
-		// 	ID:      arg.FromAccountID,
-		// 	Balance: account1.Balance - arg.Amount,
-		// })
-		// if err != nil {
-		// 	return err
-		// }
-
-		// // fmt.Println(txName, "get account 2")
-		// account2, err := q.GetAccountForUpdate(ctx, arg.ToAccountID)
-		// if err != nil {
-		// 	return err
-		// }
-
-		// // fmt.Println(txName, "update account 2")
-		// result.ToAccount, err = q.UpdateAccount(ctx, UpdateAccountParams{
-		// 	ID:      arg.ToAccountID,
-		// 	Balance: account2.Balance + arg.Amount,
-		// })
-		// if err != nil {
-		// 	return err
-		// }
-
-		// approach 2: add amount
-		// result.FromAccount, err = q.AddAccountBalance(ctx, AddAccountBalanceParams{
-		// 	ID:     arg.FromAccountID,
-		// 	Amount: -arg.Amount,
-		// })
-		// if err != nil {
-		// 	return err
-		// }
-
-		// result.ToAccount, err = q.AddAccountBalance(ctx, AddAccountBalanceParams{
-		// 	ID:     arg.ToAccountID,
-		// 	Amount: arg.Amount,
-		// })
-		// if err != nil {
-		// 	return err
-		// }
-
-		// control order -> avoid deadlock
-		if arg.FromAccountID < arg.ToAccountID {
-			result.FromAccount, result.ToAccount, err = addMoney(ctx, q, arg.FromAccountID, -arg.Amount, arg.ToAccountID, arg.Amount)
-		} else {
-			result.ToAccount, result.FromAccount, err = addMoney(ctx, q, arg.ToAccountID, arg.Amount, arg.FromAccountID, -arg.Amount)
-		}
-
 		return err
 	})
 

@@ -71,3 +71,12 @@ ALTER TABLE "transfers" ADD FOREIGN KEY ("from_account_id") REFERENCES "accounts
 ALTER TABLE "transfers" ADD FOREIGN KEY ("to_account_id") REFERENCES "accounts" ("id");
 
 ALTER TABLE "sessions" ADD FOREIGN KEY ("username") REFERENCES "users" ("username");
+
+CREATE TABLE "idempotency_keys" (
+  "owner" varchar NOT NULL,
+  "key" varchar NOT NULL,
+  "request_hash" varchar NOT NULL,
+  "response_body" text NOT NULL DEFAULT '',
+  "created_at" timestamptz NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("owner", "key")
+);

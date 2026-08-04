@@ -51,6 +51,21 @@ func (mr *MockStoreMockRecorder) AddAccountBalance(arg0, arg1 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddAccountBalance", reflect.TypeOf((*MockStore)(nil).AddAccountBalance), arg0, arg1)
 }
 
+// CompleteIdempotencyKey mocks base method.
+func (m *MockStore) CompleteIdempotencyKey(arg0 context.Context, arg1 db.CompleteIdempotencyKeyParams) (db.IdempotencyKey, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompleteIdempotencyKey", arg0, arg1)
+	ret0, _ := ret[0].(db.IdempotencyKey)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompleteIdempotencyKey indicates an expected call of CompleteIdempotencyKey.
+func (mr *MockStoreMockRecorder) CompleteIdempotencyKey(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteIdempotencyKey", reflect.TypeOf((*MockStore)(nil).CompleteIdempotencyKey), arg0, arg1)
+}
+
 // CreateAccount mocks base method.
 func (m *MockStore) CreateAccount(arg0 context.Context, arg1 db.CreateAccountParams) (db.Account, error) {
 	m.ctrl.T.Helper()
@@ -79,6 +94,21 @@ func (m *MockStore) CreateEntry(arg0 context.Context, arg1 db.CreateEntryParams)
 func (mr *MockStoreMockRecorder) CreateEntry(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateEntry", reflect.TypeOf((*MockStore)(nil).CreateEntry), arg0, arg1)
+}
+
+// CreateIdempotencyKey mocks base method.
+func (m *MockStore) CreateIdempotencyKey(arg0 context.Context, arg1 db.CreateIdempotencyKeyParams) (db.IdempotencyKey, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateIdempotencyKey", arg0, arg1)
+	ret0, _ := ret[0].(db.IdempotencyKey)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateIdempotencyKey indicates an expected call of CreateIdempotencyKey.
+func (mr *MockStoreMockRecorder) CreateIdempotencyKey(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIdempotencyKey", reflect.TypeOf((*MockStore)(nil).CreateIdempotencyKey), arg0, arg1)
 }
 
 // CreateSession mocks base method.
@@ -185,6 +215,21 @@ func (mr *MockStoreMockRecorder) GetEntry(arg0, arg1 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntry", reflect.TypeOf((*MockStore)(nil).GetEntry), arg0, arg1)
 }
 
+// GetIdempotencyKey mocks base method.
+func (m *MockStore) GetIdempotencyKey(arg0 context.Context, arg1 db.GetIdempotencyKeyParams) (db.IdempotencyKey, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIdempotencyKey", arg0, arg1)
+	ret0, _ := ret[0].(db.IdempotencyKey)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIdempotencyKey indicates an expected call of GetIdempotencyKey.
+func (mr *MockStoreMockRecorder) GetIdempotencyKey(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIdempotencyKey", reflect.TypeOf((*MockStore)(nil).GetIdempotencyKey), arg0, arg1)
+}
+
 // GetSession mocks base method.
 func (m *MockStore) GetSession(arg0 context.Context, arg1 uuid.UUID) (db.Session, error) {
 	m.ctrl.T.Helper()
@@ -228,6 +273,21 @@ func (m *MockStore) GetUser(arg0 context.Context, arg1 string) (db.User, error) 
 func (mr *MockStoreMockRecorder) GetUser(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUser", reflect.TypeOf((*MockStore)(nil).GetUser), arg0, arg1)
+}
+
+// IdempotentTransferTx mocks base method.
+func (m *MockStore) IdempotentTransferTx(arg0 context.Context, arg1 db.IdempotentTransferTxParams) (db.TransferTxResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IdempotentTransferTx", arg0, arg1)
+	ret0, _ := ret[0].(db.TransferTxResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IdempotentTransferTx indicates an expected call of IdempotentTransferTx.
+func (mr *MockStoreMockRecorder) IdempotentTransferTx(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IdempotentTransferTx", reflect.TypeOf((*MockStore)(nil).IdempotentTransferTx), arg0, arg1)
 }
 
 // ListAccounts mocks base method.
