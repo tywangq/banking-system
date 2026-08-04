@@ -42,5 +42,17 @@ jobs:
       - name: Run migrations
         run: make migrateup
 
+      # app.env is not in the repo, so the config comes from the environment.
+      # These are throwaway values for the service container above, not secrets.
       - name: Test
         run: make test
+        env:
+          ENVIRONMENT: test
+          DB_DRIVER: postgres
+          DB_SOURCE: postgresql://root:psql@localhost:5432/bank?sslmode=disable
+          MIGRATION_URL: file://db/migration
+          HTTP_SERVER_ADDRESS: 0.0.0.0:8080
+          GRPC_SERVER_ADDRESS: 0.0.0.0:9090
+          TOKEN_SYMMETRIC_KEY: 12345678901234567890123456789012
+          ACCESS_TOKEN_DURATION: 15m
+          REFRESH_TOKEN_DURATION: 24h
