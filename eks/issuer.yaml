@@ -4,7 +4,10 @@ metadata:
   name: letsencrypt
 spec:
   acme:
-    email: techschool.guru@gmail.com
+    # Let's Encrypt sends certificate-expiry notices here, so this has to be a
+    # real address belonging to whoever operates the cluster. Kept as a
+    # placeholder rather than a personal address because this repo is public.
+    email: TODO-OPERATOR-EMAIL@example.com
     server: https://acme-v02.api.letsencrypt.org/directory
     privateKeySecretRef:
       # Secret resource that will be used to store the account's private key.
