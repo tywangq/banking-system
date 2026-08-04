@@ -13,8 +13,8 @@ import (
 func TestTransferTx(t *testing.T) {
 	store := NewStore(testDB)
 
-	account1 := createRandomAccount(t)
-	account2 := createRandomAccount(t)
+	account1 := createFundedAccount(t, 1000)
+	account2 := createFundedAccount(t, 1000)
 	fmt.Println(">> before:", account1.Balance, account2.Balance)
 
 	// run n concurrent transfer transactions
@@ -123,8 +123,8 @@ func TestTransferTx(t *testing.T) {
 func TestTransferTxDeadlock(t *testing.T) {
 	store := NewStore(testDB)
 
-	account1 := createRandomAccount(t)
-	account2 := createRandomAccount(t)
+	account1 := createFundedAccount(t, 1000)
+	account2 := createFundedAccount(t, 1000)
 	fmt.Println(">> before:", account1.Balance, account2.Balance)
 
 	// run n concurrent transfer transactions
@@ -275,16 +275,8 @@ func TestTransferTxRejectsOverdraft(t *testing.T) {
 func TestTransferTxConcurrentOverdraftLeavesBalanceNonNegative(t *testing.T) {
 	store := NewStore(testDB)
 
-	account1 := createRandomAccount(t)
+	account1 := createFundedAccount(t, 100)
 	account2 := createRandomAccount(t)
-
-	// Fund a known balance so the arithmetic is exact.
-	funded, err := testQueries.AddAccountBalance(context.Background(), AddAccountBalanceParams{
-		ID:     account1.ID,
-		Amount: 100 - account1.Balance,
-	})
-	require.NoError(t, err)
-	require.Equal(t, int64(100), funded.Balance)
 
 	// 20 concurrent transfers of 10 against a balance of 100: at most 10 can win.
 	n := 20
