@@ -60,6 +60,47 @@ None of it is left to reasoning — all three are pinned by tests:
   application-level check would let them all through — exactly 10 succeed, the
   balance lands on 0, and it never goes negative
 
+## Retries: idempotency on `POST /transfers`
+
+A client whose request times out does not know whether the transfer happened. Retrying
+is the only sane thing for it to do, and without protection the retry moves the money
+again.
+
+Send an `Idempotency-Key` header and the retry returns the original result instead:
+
+```bash
+curl -X POST localhost:8080/transfers \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: 8f14e45f-ea6d-4b1e-9a2f-0c3d1b7a9e55" \
+  -d '{"from_account_id":1,"to_account_id":2,"amount":100,"currency":"USD"}'
+```
+
+**The claim is inserted before the transfer, in the same transaction.** That ordering is
+the whole design. Asking "has this key been used?" and *then* transferring is the same
+race as checking a balance before debiting it — two concurrent retries both see no key
+and both move the money. Inserting the claim first hands the mutual exclusion to the
+primary key on `(owner, key)`: the second request blocks on the index until the first
+commits, then fails to insert, and that failure is what triggers the replay.
+
+`TestIdempotentTransferTxConcurrentRetriesMoveMoneyOnce` fires 8 simultaneous requests
+carrying one key. Exactly one succeeds and the balance moves once.
+
+Three details that follow from the design:
+
+- **Keys are scoped to their owner.** One caller's key cannot collide with, or read
+  back, another caller's result.
+- **A failed transfer releases the key.** The claim rolls back with the transfer, so a
+  retry can try again once the cause is fixed. The key exists to stop a *successful*
+  transfer happening twice, not to make a failure permanent.
+- **The same key with different parameters is a `409`**, not a replay. A stored response
+  to a different request would be an answer to a question nobody asked. That is what
+  `request_hash` is for.
+
+The header is optional, so existing callers keep working — a caller that omits it gets
+no replay protection. On a greenfield API this endpoint would require it.
+
+A replayed response carries `Idempotent-Replay: true`.
+
 ## Auth
 
 Sessions are **Paseto** tokens, not JWT. Paseto has no algorithm-negotiation field,
@@ -84,15 +125,15 @@ one line in `api/server.go`. Access tokens are short-lived and renewed through
 
 **REST (Gin)**
 
-| Method | Path | Auth |
-| --- | --- | --- |
-| POST | `/users` | — |
-| POST | `/users/login` | — |
-| POST | `/tokens/renew_access` | — |
-| POST | `/accounts` | Paseto |
-| GET | `/accounts/:id` | Paseto |
-| GET | `/accounts` | Paseto |
-| POST | `/transfers` | Paseto |
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| POST | `/users` | — | |
+| POST | `/users/login` | — | |
+| POST | `/tokens/renew_access` | — | |
+| POST | `/accounts` | Paseto | |
+| GET | `/accounts/:id` | Paseto | |
+| GET | `/accounts` | Paseto | |
+| POST | `/transfers` | Paseto | accepts `Idempotency-Key` |
 
 Authorized routes go through a Gin middleware; the gRPC side does the equivalent in
 `gapi/authorization.go` by reading metadata.
@@ -139,9 +180,9 @@ a database. The `db/sqlc` tests are integration tests and do need a live Postgre
 | --- | --- | --- |
 | `val` | 100% | username / name / password / email rules |
 | `gapi` | 92% | the three gRPC handlers, auth, logging interceptors |
-| `db/sqlc` | 78% | queries and `TransferTx`, including the concurrency tests above |
+| `db/sqlc` | 81% | queries, `TransferTx`, and the concurrency and idempotency tests above |
 | `token` | 78% | Paseto and JWT makers, expiry, the `alg: none` attack |
-| `api` | 66% | REST handlers, including every `POST /transfers` rejection path |
+| `api` | 71% | REST handlers, including every `POST /transfers` rejection and replay path |
 | `util` | 61% | config loading, password hashing |
 
 `POST /transfers` is covered for every way it can refuse: an account the caller
@@ -190,10 +231,8 @@ service with one database, and the goal was correctness under concurrency and a 
 dual-protocol contract — not throughput. Adding a cache in front of balances would
 have to answer invalidation on every transfer, which is a different project.
 
-A known gap rather than a decision: `POST /transfers` has no idempotency key, so a
-client that retries a timed-out request can move the money twice. Doing it properly
-means a request-keyed table with a unique index, returning the first result on a
-replay instead of executing again.
+Spent idempotency keys are never pruned. A real deployment would expire them on a
+window long enough to outlive any client's retry budget; there is no such job here.
 
 ## Stack
 
