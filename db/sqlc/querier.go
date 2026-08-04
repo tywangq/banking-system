@@ -12,6 +12,12 @@ import (
 
 type Querier interface {
 	AddAccountBalance(ctx context.Context, arg AddAccountBalanceParams) (Account, error)
+	// Revokes one session. Blocking rather than deleting keeps the audit trail: the
+	// user agent and client IP of a session that was signed out stay inspectable.
+	BlockSession(ctx context.Context, id uuid.UUID) (Session, error)
+	// Revokes every session a user holds, for "sign out everywhere". Returns the number
+	// of rows touched so the caller can report how many were actually open.
+	BlockUserSessions(ctx context.Context, username string) (int64, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) (IdempotencyKey, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateEntry(ctx context.Context, arg CreateEntryParams) (Entry, error)

@@ -11,6 +11,9 @@ type Store interface {
 	Querier
 	TransferTx(ctx context.Context, arg TransferTxParams) (TransferTxResult, error)
 	IdempotentTransferTx(ctx context.Context, arg IdempotentTransferTxParams) (TransferTxResult, error)
+	// Ping reports whether the database is reachable, so the readiness probe can
+	// answer without inventing a query whose ErrNoRows has to be read as success.
+	Ping(ctx context.Context) error
 }
 
 type SQLStore struct {
@@ -23,6 +26,10 @@ func NewStore(db *sql.DB) Store {
 		Queries: New(db), // 匿名字段会被自动赋名为类型名（去掉前面的*或者其他修饰符）
 		db:      db,
 	}
+}
+
+func (store *SQLStore) Ping(ctx context.Context) error {
+	return store.db.PingContext(ctx)
 }
 
 func (store *SQLStore) execTx(ctx context.Context, fn func(*Queries) error) error { // 对外不可见

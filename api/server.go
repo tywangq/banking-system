@@ -40,6 +40,11 @@ func NewServer(config util.Config, store db.Store) (*Server, error) {
 
 func (server *Server) setupRouter() {
 	router := gin.Default()
+	// Unauthenticated on purpose: the kubelet has no credentials, and a probe that
+	// could fail on auth would report the wrong thing.
+	router.GET("/health/live", server.live)
+	router.GET("/health/ready", server.ready)
+
 	router.POST("/users", server.createUser)
 	router.POST("/users/login", server.loginUser)
 	router.POST("/tokens/renew_access", server.renewAccessToken)
@@ -51,6 +56,9 @@ func (server *Server) setupRouter() {
 	authRoutes.GET("/accounts", server.listAccounts)
 
 	authRoutes.POST("/transfers", server.createTransfer)
+
+	authRoutes.POST("/users/logout", server.logout)
+	authRoutes.POST("/users/logout_all", server.logoutAll)
 
 	server.router = router
 }

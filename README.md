@@ -24,7 +24,11 @@ concurrent transfers, and doing it without deadlocking.
   [SwaggerHub](https://app.swaggerhub.com/apis/IvyWang/bank/1.0) if you want to browse
   the API without running anything.
 
-A second, Gin-based HTTP server carries the account and transfer endpoints.
+A second, Gin-based HTTP server carries the account, transfer, and session endpoints.
+**`main.go` currently starts the gateway and gRPC servers, not the Gin one** (see the
+swap point in `runGrpcServer`'s caller), so those routes are reachable when you run Gin
+locally but are not exposed by the deployed service. The health endpoints below are
+registered on both listeners for exactly that reason.
 
 ## Concurrency: the part that needed care
 
@@ -121,6 +125,26 @@ type Maker interface {
 one line in `api/server.go`. Access tokens are short-lived and renewed through
 `POST /tokens/renew_access` against a stored refresh session.
 
+## Sessions and signing out
+
+Logging in stores a refresh session; `POST /tokens/renew_access` trades a refresh token
+for a new access token and refuses a session that is blocked, expired, mismatched, or
+owned by somebody else.
+
+`is_blocked` had been read from the start and never written, so there was no way to sign
+out. `POST /users/logout` revokes one session — the device whose refresh token you send —
+and `POST /users/logout_all` revokes every session the caller holds, for when a password
+may be compromised. Both verify that the session belongs to the authenticated user, so a
+refresh token picked up elsewhere cannot be used to revoke someone else's session.
+
+Sessions are blocked rather than deleted, which keeps the user agent and client IP of a
+signed-out session inspectable afterwards.
+
+**What logout does not do:** it stops refresh, not the access token already in the
+caller's hands. Access tokens are stateless, so invalidating one would need a denylist
+consulted on every request — giving up the property that makes stateless tokens worth
+having. The window is bounded by `ACCESS_TOKEN_DURATION` instead, which is 15 minutes.
+
 ## API surface
 
 **REST (Gin)**
@@ -134,6 +158,10 @@ one line in `api/server.go`. Access tokens are short-lived and renewed through
 | GET | `/accounts/:id` | Paseto | |
 | GET | `/accounts` | Paseto | |
 | POST | `/transfers` | Paseto | accepts `Idempotency-Key` |
+| POST | `/users/logout` | Paseto | revokes the session for the supplied refresh token |
+| POST | `/users/logout_all` | Paseto | revokes every session the caller holds |
+| GET | `/health/live` | — | also on the gateway listener |
+| GET | `/health/ready` | — | also on the gateway listener |
 
 Authorized routes go through a Gin middleware; the gRPC side does the equivalent in
 `gapi/authorization.go` by reading metadata.
@@ -179,10 +207,11 @@ a database. The `db/sqlc` tests are integration tests and do need a live Postgre
 | Package | Coverage | What it covers |
 | --- | --- | --- |
 | `val` | 100% | username / name / password / email rules |
+| `health` | 100% | liveness and readiness, including the 503-not-500 distinction |
 | `gapi` | 92% | the three gRPC handlers, auth, logging interceptors |
-| `db/sqlc` | 81% | queries, `TransferTx`, and the concurrency and idempotency tests above |
+| `db/sqlc` | 86% | queries, `TransferTx`, and the concurrency and idempotency tests above |
 | `token` | 78% | Paseto and JWT makers, expiry, the `alg: none` attack |
-| `api` | 71% | REST handlers, including every `POST /transfers` rejection and replay path |
+| `api` | 85% | REST handlers, including every `POST /transfers` rejection and replay path |
 | `util` | 61% | config loading, password hashing |
 
 `POST /transfers` is covered for every way it can refuse: an account the caller
@@ -213,6 +242,15 @@ go test ./... -race -cover    # same suite under the race detector
   startup, so a new deploy brings the schema with it instead of needing a separate
   migration step in the pipeline. `docker-compose.yaml` fronts it with `wait-for.sh`
   so the container does not race Postgres coming up
+- **Probes** — `livenessProbe` hits `/health/live`, which never touches Postgres: a
+  failing liveness probe restarts the pod, and restarting every replica during a
+  database outage turns it into a crash loop. `readinessProbe` hits `/health/ready`,
+  which does check Postgres, because failing it only pulls the pod from the Service —
+  the right response to an unusable dependency. Verified by killing Postgres under a
+  running container: liveness stayed `200`, readiness went `503`, and it returned to
+  `200` on recovery
+- **Resource requests and limits** — set, so the scheduler can place the pod and one
+  replica cannot starve its node
 - **AWS EKS** — manifests in `eks/`: `deployment.yaml`, `service.yaml`,
   `ingress.yaml`, `issuer.yaml`, `aws-auth.yaml`
 - **TLS** — terminated at the ingress, with certificates issued automatically by the
