@@ -1,4 +1,4 @@
-# banking-system
+# LedgerLock
 
 A Go banking API that serves the same definition over **both gRPC and REST**, with
 money transfers that stay correct when they run at the same time.
